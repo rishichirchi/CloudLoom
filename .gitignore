@@ -1,0 +1,12 @@
+# Build and development files
+.air.toml
+tmp/
+
+# Environment files
+.env
+
+# Logs
+*.log
+build-errors.log
+
+cloudformation-templates/
