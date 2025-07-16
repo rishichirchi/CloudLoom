@@ -1,0 +1,27 @@
+[project]
+name = "aventus"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "chromadb>=1.0.9",
+    "docling>=2.15.1",
+    "faiss-cpu>=1.11.0",
+    "fastapi>=0.115.9",
+    "google-genai>=1.15.0",
+    "google-generativeai>=0.8.5",
+    "langchain>=0.3.25",
+    "langchain-chroma>=0.2.4",
+    "langchain-community>=0.3.24",
+    "langchain-docling>=0.2.0",
+    "langchain-experimental>=0.3.4",
+    "langchain-google-genai>=2.0.10",
+    "langchain-huggingface>=0.2.0",
+    "langchain-openai>=0.3.17",
+    "python-dotenv>=1.0.0",
+    "python-hcl2>=7.2.1",
+    "requests>=2.31.0",
+    "sentence-transformers>=4.1.0",
+    "uvicorn>=0.34.2",
+]

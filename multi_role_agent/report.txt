@@ -1,0 +1,36 @@
+```json
+[
+    {
+      "severity": 3,
+      "vulnerability": "# Security Group allowing SSH from anywhere\nAllowing SSH access from 0.0.0.0/0 is a critical security risk as it exposes the server to potential unauthorized access from any IP address.",
+      "recommendations": "Restrict SSH access to specific IP addresses or ranges that are trusted. Consider using a VPN or bastion host for secure access.",
+      "resource_name": "app_instance_sg",
+      "resource_type": "aws_security_group",
+      "potential_impact": "Unauthorized access to EC2 instances leading to data breaches or system compromise."
+    },
+    {
+      "severity": 2,
+      "vulnerability": "# Security Group allowing HTTP from anywhere\nAllowing HTTP access from 0.0.0.0/0 exposes the web server to potential attacks from any IP address.",
+      "recommendations": "Restrict HTTP access to specific IP addresses or ranges that are trusted, or implement a Web Application Firewall (WAF).",
+      "resource_name": "app_instance_sg",
+      "resource_type": "aws_security_group",
+      "potential_impact": "Web server compromise, defacement, or denial of service."
+    },
+    {
+      "severity": 2,
+      "vulnerability": "# S3 Bucket ACL is set to Private but logging target is public\nThe S3 bucket `app_data_bucket` has ACL set to private, but the logging target `my-unique-app-logs-bucket` is not defined, which could lead to logs being stored in a public bucket if it exists, potentially exposing sensitive information.",
+      "recommendations": "Ensure the logging target bucket exists and has appropriate access controls. Ideally, the logging bucket should also be private and have restricted access.",
+      "resource_name": "app_data_bucket",
+      "resource_type": "aws_s3_bucket",
+      "potential_impact": "Exposure of sensitive data stored in S3 logs."
+    },
+    {
+      "severity": 1,
+      "vulnerability": "# IAM Policy allows broad S3 actions\nThe IAM policy `s3_read_write_policy` grants `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and `s3:ListBucket` permissions. While scoped to the bucket, excessive permissions can lead to unintended data modification or deletion.",
+      "recommendations": "Apply the principle of least privilege. Only grant the necessary permissions. If the EC2 instance only needs to read objects, remove the `s3:PutObject` and `s3:DeleteObject` permissions.",
+      "resource_name": "s3_read_write_policy",
+      "resource_type": "aws_iam_policy",
+      "potential_impact": "Data loss or corruption due to unintended or malicious actions."
+    }
+]
+```

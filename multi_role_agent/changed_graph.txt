@@ -1,0 +1,15 @@
+graph LR
+    aws_vpc.app_vpc --> aws_subnet.app_subnet_public
+    aws_vpc.app_vpc --> aws_internet_gateway.app_igw
+    aws_vpc.app_vpc --> aws_route_table.app_public_rt
+    aws_vpc.app_vpc --> aws_security_group.app_instance_sg
+    aws_subnet.app_subnet_public --> aws_route_table_association.app_public_rta
+    aws_internet_gateway.app_igw --> aws_route_table.app_public_rt
+    aws_route_table.app_public_rt --> aws_route_table_association.app_public_rta
+    aws_security_group.app_instance_sg --> aws_instance.app_server
+    aws_s3_bucket.app_data_bucket -- read/write --> aws_iam_policy.s3_read_write_policy
+    aws_iam_policy.s3_read_write_policy --> aws_iam_role_policy_attachment.app_role_policy_attach
+    aws_iam_role.app_instance_role --> aws_iam_role_policy_attachment.app_role_policy_attach
+    aws_iam_role.app_instance_role --> aws_iam_instance_profile.app_instance_profile
+    aws_iam_instance_profile.app_instance_profile --> aws_instance.app_server
+    aws_subnet.app_subnet_public --> aws_instance.app_server
