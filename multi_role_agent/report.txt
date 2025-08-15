@@ -1,36 +1,52 @@
-```json
-[
-    {
-      "severity": 3,
-      "vulnerability": "# Security Group allowing SSH from anywhere\nAllowing SSH access from 0.0.0.0/0 is a critical security risk as it exposes the server to potential unauthorized access from any IP address.",
-      "recommendations": "Restrict SSH access to specific IP addresses or ranges that are trusted. Consider using a VPN or bastion host for secure access.",
-      "resource_name": "app_instance_sg",
-      "resource_type": "aws_security_group",
-      "potential_impact": "Unauthorized access to EC2 instances leading to data breaches or system compromise."
-    },
-    {
-      "severity": 2,
-      "vulnerability": "# Security Group allowing HTTP from anywhere\nAllowing HTTP access from 0.0.0.0/0 exposes the web server to potential attacks from any IP address.",
-      "recommendations": "Restrict HTTP access to specific IP addresses or ranges that are trusted, or implement a Web Application Firewall (WAF).",
-      "resource_name": "app_instance_sg",
-      "resource_type": "aws_security_group",
-      "potential_impact": "Web server compromise, defacement, or denial of service."
-    },
-    {
-      "severity": 2,
-      "vulnerability": "# S3 Bucket ACL is set to Private but logging target is public\nThe S3 bucket `app_data_bucket` has ACL set to private, but the logging target `my-unique-app-logs-bucket` is not defined, which could lead to logs being stored in a public bucket if it exists, potentially exposing sensitive information.",
-      "recommendations": "Ensure the logging target bucket exists and has appropriate access controls. Ideally, the logging bucket should also be private and have restricted access.",
-      "resource_name": "app_data_bucket",
-      "resource_type": "aws_s3_bucket",
-      "potential_impact": "Exposure of sensitive data stored in S3 logs."
-    },
-    {
-      "severity": 1,
-      "vulnerability": "# IAM Policy allows broad S3 actions\nThe IAM policy `s3_read_write_policy` grants `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and `s3:ListBucket` permissions. While scoped to the bucket, excessive permissions can lead to unintended data modification or deletion.",
-      "recommendations": "Apply the principle of least privilege. Only grant the necessary permissions. If the EC2 instance only needs to read objects, remove the `s3:PutObject` and `s3:DeleteObject` permissions.",
-      "resource_name": "s3_read_write_policy",
-      "resource_type": "aws_iam_policy",
-      "potential_impact": "Data loss or corruption due to unintended or malicious actions."
-    }
-]
-```
+# Security Vulnerability Report
+
+## Vulnerabilities
+
+### 1. Security Group allowing SSH from anywhere
+
+**Vulnerability:** Allowing SSH access from 0.0.0.0/0 is a critical security risk as it exposes the server to potential unauthorized access from any IP address.
+
+**Recommendations:** Restrict SSH access to specific IP addresses or ranges that are trusted. Consider using a VPN or bastion host for secure access.
+
+**Resource Name:** app_instance_sg
+
+**Resource Type:** aws_security_group
+
+**Potential Impact:** Unauthorized access to EC2 instances leading to data breaches or system compromise.
+
+### 2. Security Group allowing HTTP from anywhere
+
+**Vulnerability:** Allowing HTTP access from 0.0.0.0/0 exposes the web server to potential attacks from any IP address. While HTTP is generally less sensitive than SSH, it can still be exploited.
+
+**Recommendations:** If the application requires public HTTP access, consider using a Web Application Firewall (WAF) to mitigate potential attacks. If possible, restrict access to known and trusted IP ranges.
+
+**Resource Name:** app_instance_sg
+
+**Resource Type:** aws_security_group
+
+**Potential Impact:** Web server compromise, defacement, or denial of service.
+
+### 3. S3 Bucket Logging Target
+
+**Vulnerability:** The S3 bucket logging configuration specifies a `target_bucket` named `my-unique-app-logs-bucket`. There is no resource defined for this bucket in the Terraform configuration. If this bucket does not exist or is misconfigured, logs will not be captured, hindering security monitoring and incident response.
+
+**Recommendations:** Ensure the `my-unique-app-logs-bucket` bucket exists and has appropriate permissions to receive logs from the `app_data_bucket`. Ideally, the logging bucket should also enforce encryption at rest and in transit.
+
+**Resource Name:** app_data_bucket
+
+**Resource Type:** aws_s3_bucket
+
+**Potential Impact:** Loss of audit logs, hindering security investigations and compliance efforts.
+
+### 4. Overly permissive S3 IAM Policy
+
+**Vulnerability:** The IAM policy `S3ReadWritePolicyForAppInstance` grants `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, and `s3:ListBucket` permissions.  Granting `s3:DeleteObject` may not be necessary and could lead to accidental or malicious data loss.
+
+**Recommendations:** Review the application's actual S3 access requirements and restrict the IAM policy to only the necessary permissions.  Avoid granting `s3:DeleteObject` unless absolutely required.
+
+**Resource Name:** s3_read_write_policy
+
+**Resource Type:** aws_iam_policy
+
+**Potential Impact:** Data loss due to accidental or malicious deletion.
+

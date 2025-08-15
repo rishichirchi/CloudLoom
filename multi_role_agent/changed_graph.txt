@@ -1,15 +1,43 @@
+```mermaid
 graph LR
-    aws_vpc.app_vpc --> aws_subnet.app_subnet_public
-    aws_vpc.app_vpc --> aws_internet_gateway.app_igw
-    aws_vpc.app_vpc --> aws_route_table.app_public_rt
-    aws_vpc.app_vpc --> aws_security_group.app_instance_sg
-    aws_subnet.app_subnet_public --> aws_route_table_association.app_public_rta
-    aws_internet_gateway.app_igw --> aws_route_table.app_public_rt
-    aws_route_table.app_public_rt --> aws_route_table_association.app_public_rta
-    aws_security_group.app_instance_sg --> aws_instance.app_server
-    aws_s3_bucket.app_data_bucket -- read/write --> aws_iam_policy.s3_read_write_policy
-    aws_iam_policy.s3_read_write_policy --> aws_iam_role_policy_attachment.app_role_policy_attach
-    aws_iam_role.app_instance_role --> aws_iam_role_policy_attachment.app_role_policy_attach
-    aws_iam_role.app_instance_role --> aws_iam_instance_profile.app_instance_profile
-    aws_iam_instance_profile.app_instance_profile --> aws_instance.app_server
-    aws_subnet.app_subnet_public --> aws_instance.app_server
+    aws_instance["aws_instance (app_server)
+    ami=ami-053b0d53c279c366f
+    instance_type=t2.micro"] -- depends_on --> aws_subnet["aws_subnet (app_subnet_public)
+    cidr_block=10.10.1.0/24"]
+    aws_instance -- depends_on --> aws_security_group["aws_security_group (app_instance_sg)
+    name=app-instance-sg"]
+    aws_instance -- depends_on --> aws_iam_instance_profile["aws_iam_instance_profile (app_instance_profile)
+    name=AppInstanceProfile"]
+    aws_subnet -- depends_on --> aws_vpc["aws_vpc (app_vpc)
+    cidr_block=10.10.0.0/16"]
+    aws_security_group -- depends_on --> aws_vpc
+    aws_route_table["aws_route_table (app_public_rt)"] -- depends_on --> aws_vpc
+    aws_internet_gateway["aws_internet_gateway (app_igw)"] -- depends_on --> aws_vpc
+    aws_route_table -- route --> aws_internet_gateway
+    aws_route_table_association["aws_route_table_association (app_public_rta)"] -- associates --> aws_subnet
+    aws_route_table_association -- associates --> aws_route_table
+    aws_iam_instance_profile -- contains --> aws_iam_role["aws_iam_role (app_instance_role)
+    name=AppInstanceRole"]
+    aws_iam_role -- attached_to --> aws_iam_policy["aws_iam_policy (s3_read_write_policy)
+    name=S3ReadWritePolicyForAppInstance"]
+    aws_s3_bucket["aws_s3_bucket (app_data_bucket)
+    bucket=my-unique-app-data-bucket-example-12345"]
+    aws_s3_bucket -- logging_to --> aws_s3_bucket_logs["aws_s3_bucket (app_logs_bucket)
+    bucket=my-unique-app-logs-bucket"]
+    aws_iam_policy -- allows --> aws_s3_bucket
+
+style aws_instance fill:#f9f,stroke:#333,stroke-width:2px
+style aws_subnet fill:#ccf,stroke:#333,stroke-width:2px
+style aws_security_group fill:#ccf,stroke:#333,stroke-width:2px
+style aws_iam_instance_profile fill:#ccf,stroke:#333,stroke-width:2px
+style aws_vpc fill:#ccf,stroke:#333,stroke-width:2px
+style aws_route_table fill:#ccf,stroke:#333,stroke-width:2px
+style aws_internet_gateway fill:#ccf,stroke:#333,stroke-width:2px
+style aws_route_table_association fill:#ccf,stroke:#333,stroke-width:2px
+style aws_iam_role fill:#ccf,stroke:#333,stroke-width:2px
+style aws_iam_policy fill:#ccf,stroke:#333,stroke-width:2px
+style aws_s3_bucket fill:#ccf,stroke:#333,stroke-width:2px
+style aws_s3_bucket_logs fill:#ccf,stroke:#333,stroke-width:2px
+
+
+```

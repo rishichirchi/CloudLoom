@@ -57,18 +57,18 @@ resource "aws_security_group" "app_instance_sg" {
   vpc_id      = aws_vpc.app_vpc.id # Depends on VPC
 
   ingress {
-    description = "Allow HTTP from specific IP"
+    description = "Allow HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["192.0.2.0/24"] # Replace with your IP range
+    cidr_blocks = ["192.168.1.1/32"] # Restrict to a specific IP - REPLACE WITH YOUR IP
   }
   ingress {
-    description = "Allow SSH from specific IP"
+    description = "Allow SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["192.0.2.0/24"] # Replace with your IP range
+    cidr_blocks = ["192.168.1.1/32"] # Restrict to a specific IP - REPLACE WITH YOUR IP
   }
   egress {
     from_port   = 0
@@ -90,7 +90,7 @@ resource "aws_s3_bucket" "app_data_bucket" {
   acl    = "private" # Keep it private by default
 
   logging {
-    target_bucket = "my-unique-app-logs-bucket" # Ensure this bucket exists and is private
+    target_bucket = aws_s3_bucket.app_logs_bucket.id
     target_prefix = "log/"
   }
 
@@ -100,6 +100,15 @@ resource "aws_s3_bucket" "app_data_bucket" {
 
   tags = {
     Name = "App Data Bucket"
+  }
+}
+
+resource "aws_s3_bucket" "app_logs_bucket" {
+  bucket = "my-unique-app-logs-bucket"
+  acl    = "private"
+
+  tags = {
+    Name = "App Logs Bucket"
   }
 }
 
@@ -118,6 +127,7 @@ resource "aws_iam_policy" "s3_read_write_policy" {
         Effect = "Allow"
         Action = [
           "s3:GetObject",
+          "s3:PutObject",
           "s3:ListBucket" # Permission to list objects in the bucket
         ]
         # This is the key part linking the permission to the bucket

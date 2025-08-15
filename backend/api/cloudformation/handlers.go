@@ -11,19 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func GetARN(ctx *gin.Context) {
-	var request RoleARNRequest
-	if err := ctx.ShouldBindJSON(&request); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
-
-	arn := fmt.Sprintf("ARN number: %s\nExternal ID: %s", request.ARNNumber, request.ExternalID)
-
-	ctx.JSON(http.StatusOK, gin.H{"arn": arn})
-		
-}
-
 // DownloadCloudFormationTemplate provides the template as a downloadable YAML file
 func DownloadCloudFormationTemplate(ctx *gin.Context) {
 	var request CloudFormationRequest
@@ -48,7 +35,7 @@ func DownloadCloudFormationTemplate(ctx *gin.Context) {
 	}
 
 	// Generate a unique external ID
-	externalID := generateExternalID()
+	externalID := "cloudloom-7132a5d5-7ce1-4c8e-aad2-af58105606e6"
 
 	// Modify the template with the external ID
 	modifiedTemplate := modifyTemplateWithExternalID(string(templateContent), externalID)

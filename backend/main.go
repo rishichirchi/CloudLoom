@@ -15,6 +15,7 @@ func main() {
 	}
 	// Initialize AWS configuration
 	config.InitAWS()
+
 	// Set up Gin router
 	// gin.SetMode(gin.ReleaseMode) // Set Gin to release mode for production
 	app := gin.Default()
