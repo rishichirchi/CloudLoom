@@ -6,6 +6,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
+	"github.com/rishichirchi/cloudloom/common"
+	"github.com/rishichirchi/cloudloom/services/steampipe"
 )
 
 type CloudTrailService struct{}
@@ -16,6 +18,7 @@ func NewCloudTrailService() *CloudTrailService {
 
 // SetupCloudTrail is the main function to orchestrate the automated setup.
 func (s *CloudTrailService) SetupCloudTrail(ctx context.Context) error {
+
 	fmt.Println("=== Starting CloudTrail Setup ===")
 
 	// Get temporary credentials by assuming the customer's role
@@ -89,6 +92,18 @@ func (s *CloudTrailService) SetupCloudTrail(ctx context.Context) error {
 	}
 	fmt.Println("✅ CloudTrail trail created/updated successfully")
 
+	// // Step 7.5: Enable AWS Config for infrastructure inventory
+	// fmt.Println("Step 7.5: Enabling AWS Config for infrastructure monitoring...")
+	// fmt.Printf("[DEBUG] About to call enableAWSConfig with bucket: %s, accountID: %s, region: %s\n", bucketName, customerAccountID, customerRegion)
+	// err = s.enableAWSConfig(ctx, customerCfg, bucketName, customerAccountID, customerRegion)
+	// if err != nil {
+	// 	fmt.Printf("⚠️ Warning: Failed to enable AWS Config: %v\n", err)
+	// 	fmt.Println("   Infrastructure inventory will use fallback methods")
+	// 	// Don't fail the entire setup if Config enablement fails
+	// } else {
+	// 	fmt.Println("✅ AWS Config enabled successfully")
+	// }
+
 	// Create SQS Queue for Auto Apply Fix (reuses existing if found)
 	fmt.Println("Step 8: Creating/checking SQS queue for Auto Apply Fix...")
 	queueInfo, err := s.createSQSQueue(ctx, customerCfg, queueName, customerAccountID)
@@ -148,7 +163,20 @@ func (s *CloudTrailService) SetupCloudTrail(ctx context.Context) error {
 	fmt.Printf("  - Queue ARN: %s\n", queueInfo.QueueArn)
 	fmt.Printf("  - Rule ARN: %s\n", queueInfo.RuleArn)
 
+	// // Step 14: Collect infrastructure inventory
+	// fmt.Println("Step 14: Collecting infrastructure inventory...")
+	// err = s.collectInfrastructureInventory(ctx, customerCfg)
+	// if err != nil {
+	// 	fmt.Printf("⚠️ Warning: Failed to collect infrastructure inventory: %v\n", err)
+	// 	// Don't fail the entire process if infrastructure collection fails
+	// } else {
+	// 	fmt.Println("✅ Infrastructure inventory collected successfully")
+	// }
+
 	fmt.Println("🎉 CloudTrail and Auto Apply Fix setup completed successfully!")
+
+	fmt.Println("Step 15: Configuring Steampipe connection...")
+	steampipe.ConfigureSteampipe("cloudloom_user", common.ARNNumber, common.ExternalID, "cloud-burner")
 	return nil
 }
 
@@ -220,3 +248,81 @@ func (s *CloudTrailService) SendTestMessage(ctx context.Context) error {
 	fmt.Println("🎉 Test message sent successfully! Check the polling logs for message reception.")
 	return nil
 }
+
+// enableAWSConfig enables AWS Config service for infrastructure monitoring
+func (s *CloudTrailService) enableAWSConfig(ctx context.Context, cfg aws.Config, bucketName, accountID, region string) error {
+	fmt.Println("[AWS Config] Setting up AWS Config service...")
+
+	// Create AWS Config service client
+	configService := NewConfigService(cfg)
+
+	// Step 1: Check if AWS Config is already enabled
+	err := configService.CheckConfigStatus(ctx)
+	if err == nil {
+		fmt.Println("[AWS Config] ✅ AWS Config is already enabled")
+		return nil
+	}
+
+	fmt.Printf("[AWS Config] AWS Config is not enabled: %v\n", err)
+	fmt.Println("[AWS Config] Proceeding with AWS Config setup...")
+
+	// Step 2: Create IAM Service Role for AWS Config
+	fmt.Println("[AWS Config] Creating IAM service role for AWS Config...")
+	configRoleArn, err := s.createConfigServiceRole(ctx, cfg, accountID)
+	if err != nil {
+		return fmt.Errorf("failed to create Config service role: %w", err)
+	}
+	fmt.Printf("[AWS Config] ✅ Config service role created: %s\n", configRoleArn)
+
+	// Step 2.5: Update S3 bucket policy to include AWS Config permissions
+	fmt.Println("[AWS Config] Updating S3 bucket policy for AWS Config access...")
+	err = s.updateS3BucketPolicyForConfig(ctx, cfg, bucketName, accountID)
+	if err != nil {
+		fmt.Printf("[AWS Config] Warning: Failed to update bucket policy: %v\n", err)
+		// Don't fail completely, but this might cause delivery channel issues
+	} else {
+		fmt.Println("[AWS Config] ✅ S3 bucket policy updated for Config access")
+	}
+
+	// Step 3: Create Configuration Recorder
+	fmt.Println("[AWS Config] Creating configuration recorder...")
+	recorderName := fmt.Sprintf("CloudLoom-Config-Recorder-%s", accountID)
+	err = s.createConfigurationRecorder(ctx, cfg, recorderName, configRoleArn)
+	if err != nil {
+		return fmt.Errorf("failed to create configuration recorder: %w", err)
+	}
+	fmt.Printf("[AWS Config] ✅ Configuration recorder created: %s\n", recorderName)
+
+	// Step 4: Create Delivery Channel using existing S3 bucket
+	fmt.Println("[AWS Config] Creating delivery channel...")
+	channelName := fmt.Sprintf("CloudLoom-Config-Channel-%s", accountID)
+	err = s.createDeliveryChannel(ctx, cfg, channelName, bucketName, accountID)
+	if err != nil {
+		return fmt.Errorf("failed to create delivery channel: %w", err)
+	}
+	fmt.Printf("[AWS Config] ✅ Delivery channel created: %s\n", channelName)
+
+	// Step 5: Start Configuration Recorder
+	fmt.Println("[AWS Config] Starting configuration recorder...")
+	err = s.startConfigurationRecorder(ctx, cfg, recorderName)
+	if err != nil {
+		return fmt.Errorf("failed to start configuration recorder: %w", err)
+	}
+	fmt.Println("[AWS Config] ✅ Configuration recorder started")
+
+	// Step 6: Create some basic Config Rules
+	fmt.Println("[AWS Config] Creating basic compliance rules...")
+	err = s.createBasicConfigRules(ctx, cfg, accountID)
+	if err != nil {
+		fmt.Printf("[AWS Config] Warning: Failed to create Config rules: %v\n", err)
+		// Don't fail the entire setup if rules fail
+	} else {
+		fmt.Println("[AWS Config] ✅ Basic Config rules created")
+	}
+
+	fmt.Println("[AWS Config] ✅ AWS Config setup completed successfully")
+	fmt.Println("[AWS Config] Note: It may take a few minutes for Config to start recording resources")
+	return nil
+}
+
+// collectInfrastructureInventory collects comprehensive infrastructure details after CloudTrail setup

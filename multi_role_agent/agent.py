@@ -1,6 +1,7 @@
 import os
+import re
 import json
-import re # Added for regex parsing in task planner
+# Added for regex parsing in task planner
 from typing import List, Dict, Any, Optional, Type
 
 # Force CPU usage to avoid CUDA out of memory errors
@@ -25,7 +26,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-MODEL_NAME = "gemini-2.0-flash"
+MODEL_NAME = "gemini-2.5-flash"
 
 # --- Tool Definitions (for CloudAIAgent) ---
 
@@ -305,6 +306,293 @@ app.add_middleware(
 
 class TerraformCode(BaseModel):
     terraform_code: str
+
+class InfrastructureInput(BaseModel):
+    infrastructure_data: dict = Field(description="Infrastructure data from Steampipe")
+    terraform_state: dict = Field(description="Terraform state data")
+
+@app.post("/generate_infrastructure_diagram/")
+async def generate_infrastructure_diagram(input_data: InfrastructureInput):
+    """
+    Generate Mermaid infrastructure and relationship diagrams from infrastructure data and Terraform state
+    """
+    try:
+        infrastructure_data = input_data.infrastructure_data
+       
+        # Save input data to files for agent processing
+        with open("infrastructure_data.json", "w") as f:
+            json.dump(infrastructure_data, f, indent=2)
+        
+            
+        # Remove previous output files
+        for file in os.listdir("."):
+            if file.endswith("_diagram.txt") or file.endswith("_graph.txt"):
+                os.remove(file)
+                
+        # Create enhanced security-focused prompt that better utilizes infrastructure data
+        with open("infrastructure_data.json", "r") as f:
+            infra_content = f.read()
+            infrastructure_data = json.loads(infra_content)
+
+        # Analyze the data structure to provide better context to the LLM
+        data_analysis = {
+            "resource_types": list(infrastructure_data.keys()) if isinstance(infrastructure_data, dict) else [],
+            "total_resources": sum(len(v) if isinstance(v, list) else 1 for v in infrastructure_data.values()) if isinstance(infrastructure_data, dict) else 0
+        }
+
+        single_prompt = f"""You are a principal cloud security analyst. Analyze the provided infrastructure data JSON and create a comprehensive security-oriented infrastructure diagram in Mermaid format.
+
+## Infrastructure Data Analysis:
+Resource Types Found: {data_analysis.get('resource_types', [])}
+Total Resources: {data_analysis.get('total_resources', 0)}
+
+## Complete Infrastructure Data:
+{infra_content}
+
+## Your Task:
+1. Parse the JSON structure thoroughly - look for VPCs, subnets, security groups, EC2 instances, load balancers, databases, storage, etc.
+2. Identify relationships between resources (subnet membership, security group associations, etc.)
+3. Create a security-focused Mermaid graph showing resource interconnections and exposure levels
+4. Focus on data flow, access patterns, and potential attack vectors
+
+## Output Requirements:
+- Output ONLY clean Mermaid code (no markdown fences, no extra text)
+- Start with 'graph TD'
+- Use 4-space indentation consistently
+- No escape characters or backslashes
+
+## Security Classification Rules:
+- **HIGH RISK (high_risk)**: Internet-facing resources, overly permissive access
+- **MEDIUM RISK (medium_risk)**: Resources accessible from high-risk components
+- **LOW RISK (low_risk)**: Properly isolated private resources
+
+## Required Styles (include at top):
+classDef high_risk fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
+classDef medium_risk fill:#fff2cc,stroke:#ff9900,stroke-width:2px;
+classDef low_risk fill:#ccffcc,stroke:#009900,stroke-width:1px;
+
+## Resource Icons:
+- Internet: fa:fa-globe
+- Load Balancer: fa:fa-network-wired  
+- EC2/Compute: fa:fa-server
+- Database: fa:fa-database
+- Storage: fa:fa-box-archive
+- Network: fa:fa-route
+- Gateway: fa:fa-door-open
+- Security Group: fa:fa-shield-alt
+
+## Graph Structure:
+1. Start with PublicInternet node if internet-facing resources exist
+2. Group resources by VPC/network boundaries using subgraphs
+3. Show clear data flows and access paths with arrows
+4. Highlight security groups and their rules
+5. Identify potential lateral movement paths
+6. Include resource details like IP addresses, ports, protocols where available
+
+## Node Format:
+nodeId["fa:fa-icon Resource Name (key details)"]:::risk_level
+
+## Example Connection Patterns:
+- PublicInternet --> InternetGateway
+- LoadBalancer --> EC2Instances  
+- EC2Instances --> Databases
+- SecurityGroups -.-> Resources (dotted line for "protects")
+
+Analyze the actual infrastructure data structure and generate a comprehensive security diagram now."""
+
+        # Create the LLM prompt template and call the model once
+        llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0, google_api_key=os.getenv("GOOGLE_API_KEY"))
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", "You are a principal cloud security analyst and must follow the user's Diagramming Rules exactly."),
+                ("user", single_prompt)
+            ]
+        )
+
+        try:
+            runnable = prompt_template | llm
+            response = runnable.invoke({
+                "infrastructure_json": infra_content,
+            })
+
+            # Extract content from response
+            if hasattr(response, 'content'):
+                diagram_text = response.content
+            else:
+                diagram_text = str(response)
+
+            # Simple cleanup - remove markdown fences if present and ensure proper format
+            diagram_text = diagram_text.strip()
+            
+            # Remove markdown code block fences if present
+            if diagram_text.startswith('```'):
+                lines = diagram_text.split('\n')
+                # Find the start and end of the actual mermaid code
+                start_idx = 0
+                end_idx = len(lines)
+                
+                for i, line in enumerate(lines):
+                    if line.strip().startswith('```'):
+                        if start_idx == 0:
+                            start_idx = i + 1
+                        else:
+                            end_idx = i
+                            break
+                
+                diagram_text = '\n'.join(lines[start_idx:end_idx])
+            
+            # Ensure the diagram starts with 'graph TD' if it doesn't already
+            if not diagram_text.strip().lower().startswith('graph'):
+                diagram_text = 'graph TD\n' + diagram_text
+            
+            # Save the clean diagram to file first
+            with open("infrastructure_diagram.txt", "w") as f:
+                f.write(diagram_text)
+            
+            # Read it back for the API response
+            with open("infrastructure_diagram.txt", "r") as f:
+                infrastructure_diagram = f.read()
+
+            security_diagram = "Security analysis integrated into main diagram"
+
+            return JSONResponse(content={
+                "infrastructure_diagram": infrastructure_diagram,
+                "security_diagram": security_diagram,
+                "agent_output": "Infrastructure diagram generated and saved to file",
+                "status": "success",
+                "file_saved": "infrastructure_diagram.txt"
+            })
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Error calling LLM for diagram generation: {str(e)}"}
+            )
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Error generating diagrams: {str(e)}"}
+        )
+
+@app.post("/generate_security_graph/")
+async def generate_security_graph(input_data: InfrastructureInput):
+    """
+    Generate a focused security relationship graph showing attack vectors and trust boundaries
+    """
+    try:
+        infrastructure_data = input_data.infrastructure_data
+        
+        # Save input data to files for processing
+        with open("infrastructure_data.json", "w") as f:
+            json.dump(infrastructure_data, f, indent=2)
+        
+        # Create a security-focused prompt that analyzes relationships
+        with open("infrastructure_data.json", "r") as f:
+            infra_content = f.read()
+
+        security_prompt = f"""You are a cybersecurity expert analyzing cloud infrastructure for attack vectors and security relationships.
+
+## Infrastructure Data:
+{infra_content}
+
+## Task: Create a Security Relationship Graph
+Generate a Mermaid graph that focuses on:
+1. Trust boundaries and security zones
+2. Attack paths and lateral movement opportunities  
+3. Data flow between security domains
+4. Access control relationships
+
+## Output Format:
+- Clean Mermaid code only (no markdown fences)
+- Start with 'graph TD'
+- Use these security-focused styles:
+
+classDef internet fill:#ff4444,stroke:#aa0000,stroke-width:3px;
+classDef dmz fill:#ffaa44,stroke:#cc6600,stroke-width:2px;
+classDef internal fill:#44aaff,stroke:#0066cc,stroke-width:2px;
+classDef database fill:#aa44ff,stroke:#6600cc,stroke-width:2px;
+classDef critical fill:#ff44aa,stroke:#cc0066,stroke-width:3px;
+
+## Security Zones:
+- internet: Internet-facing components
+- dmz: Demilitarized zone (public-facing but controlled)
+- internal: Internal application layer
+- database: Data persistence layer
+- critical: High-value assets
+
+## Focus Areas:
+1. Map each resource to appropriate security zone
+2. Show trust relationships (who can access what)
+3. Highlight privilege escalation opportunities
+4. Identify data exposure risks
+5. Mark critical decision points in access flows
+
+## Node Format:
+nodeId["Resource Name - Security Context"]:::zone
+
+Generate the security relationship graph now."""
+
+        # Create LLM call for security graph
+        llm = ChatGoogleGenerativeAI(model=MODEL_NAME, temperature=0, google_api_key=os.getenv("GOOGLE_API_KEY"))
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", "You are a cybersecurity expert focused on infrastructure attack surface analysis."),
+                ("user", security_prompt)
+            ]
+        )
+
+        runnable = prompt_template | llm
+        response = runnable.invoke({})
+
+        # Extract and clean the response
+        if hasattr(response, 'content'):
+            security_graph_text = response.content
+        else:
+            security_graph_text = str(response)
+
+        # Simple cleanup
+        security_graph_text = security_graph_text.strip()
+        
+        # Remove markdown fences if present
+        if security_graph_text.startswith('```'):
+            lines = security_graph_text.split('\n')
+            start_idx = 0
+            end_idx = len(lines)
+            
+            for i, line in enumerate(lines):
+                if line.strip().startswith('```'):
+                    if start_idx == 0:
+                        start_idx = i + 1
+                    else:
+                        end_idx = i
+                        break
+            
+            security_graph_text = '\n'.join(lines[start_idx:end_idx])
+        
+        # Ensure proper graph format
+        if not security_graph_text.strip().lower().startswith('graph'):
+            security_graph_text = 'graph TD\n' + security_graph_text
+
+        # Save to file
+        with open("security_relationship_graph.txt", "w") as f:
+            f.write(security_graph_text)
+        
+        # Read back for response
+        with open("security_relationship_graph.txt", "r") as f:
+            security_graph = f.read()
+
+        return JSONResponse(content={
+            "security_graph": security_graph,
+            "status": "success",
+            "file_saved": "security_relationship_graph.txt",
+            "description": "Security relationship graph focusing on attack vectors and trust boundaries"
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Error generating security graph: {str(e)}"}
+        )
 
 @app.post("/process_terraform/")
 async def func():

@@ -48,7 +48,7 @@ func (s *CloudTrailService) createS3BucketAndPolicy(ctx context.Context, cfg aws
 	}
 
 	// Set the bucket policy (this can be updated even if bucket exists)
-	fmt.Printf("[S3] Setting bucket policy for CloudTrail access...\n")
+	fmt.Printf("[S3] Setting bucket policy for CloudTrail and AWS Config access...\n")
 	policy := fmt.Sprintf(`{
         "Version": "2012-10-17",
         "Statement": [
@@ -66,9 +66,38 @@ func (s *CloudTrailService) createS3BucketAndPolicy(ctx context.Context, cfg aws
                 "Action": "s3:PutObject",
                 "Resource": "arn:aws:s3:::%s/AWSLogs/%s/*",
                 "Condition": {"StringEquals": {"s3:x-amz-acl": "bucket-owner-full-control"}}
+            },
+            {
+                "Sid": "AWSConfigBucketPermissionsCheck",
+                "Effect": "Allow",
+                "Principal": {"Service": "config.amazonaws.com"},
+                "Action": "s3:GetBucketAcl",
+                "Resource": "arn:aws:s3:::%s",
+                "Condition": {"StringEquals": {"AWS:SourceAccount": "%s"}}
+            },
+            {
+                "Sid": "AWSConfigBucketExistenceCheck",
+                "Effect": "Allow",
+                "Principal": {"Service": "config.amazonaws.com"},
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::%s",
+                "Condition": {"StringEquals": {"AWS:SourceAccount": "%s"}}
+            },
+            {
+                "Sid": "AWSConfigBucketDelivery",
+                "Effect": "Allow",
+                "Principal": {"Service": "config.amazonaws.com"},
+                "Action": "s3:PutObject",
+                "Resource": "arn:aws:s3:::%s/config/AWSLogs/%s/Config/*",
+                "Condition": {
+                    "StringEquals": {
+                        "s3:x-amz-acl": "bucket-owner-full-control",
+                        "AWS:SourceAccount": "%s"
+                    }
+                }
             }
         ]
-    }`, bucketName, bucketName, accountID)
+    }`, bucketName, bucketName, accountID, bucketName, accountID, bucketName, accountID, bucketName, accountID, accountID)
 	_, err = s3Client.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
 		Bucket: aws.String(bucketName),
 		Policy: aws.String(policy),
@@ -78,5 +107,74 @@ func (s *CloudTrailService) createS3BucketAndPolicy(ctx context.Context, cfg aws
 		return err
 	}
 	fmt.Printf("[S3] ✅ Bucket policy set successfully\n")
+	return nil
+}
+
+// updateS3BucketPolicyForConfig updates the S3 bucket policy to include AWS Config permissions
+func (s *CloudTrailService) updateS3BucketPolicyForConfig(ctx context.Context, cfg aws.Config, bucketName, accountID string) error {
+	fmt.Printf("[S3] Updating bucket policy for AWS Config access: %s\n", bucketName)
+
+	s3Client := s3.NewFromConfig(cfg)
+
+	// Set the comprehensive bucket policy that includes both CloudTrail and AWS Config permissions
+	policy := fmt.Sprintf(`{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "AWSCloudTrailAclCheck20150319",
+                "Effect": "Allow",
+                "Principal": {"Service": "cloudtrail.amazonaws.com"},
+                "Action": "s3:GetBucketAcl",
+                "Resource": "arn:aws:s3:::%s"
+            },
+            {
+                "Sid": "AWSCloudTrailWrite20150319",
+                "Effect": "Allow",
+                "Principal": {"Service": "cloudtrail.amazonaws.com"},
+                "Action": "s3:PutObject",
+                "Resource": "arn:aws:s3:::%s/AWSLogs/%s/*",
+                "Condition": {"StringEquals": {"s3:x-amz-acl": "bucket-owner-full-control"}}
+            },
+            {
+                "Sid": "AWSConfigBucketPermissionsCheck",
+                "Effect": "Allow",
+                "Principal": {"Service": "config.amazonaws.com"},
+                "Action": "s3:GetBucketAcl",
+                "Resource": "arn:aws:s3:::%s",
+                "Condition": {"StringEquals": {"AWS:SourceAccount": "%s"}}
+            },
+            {
+                "Sid": "AWSConfigBucketExistenceCheck",
+                "Effect": "Allow",
+                "Principal": {"Service": "config.amazonaws.com"},
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::%s",
+                "Condition": {"StringEquals": {"AWS:SourceAccount": "%s"}}
+            },
+            {
+                "Sid": "AWSConfigBucketDelivery",
+                "Effect": "Allow",
+                "Principal": {"Service": "config.amazonaws.com"},
+                "Action": "s3:PutObject",
+                "Resource": "arn:aws:s3:::%s/config/AWSLogs/%s/Config/*",
+                "Condition": {
+                    "StringEquals": {
+                        "s3:x-amz-acl": "bucket-owner-full-control",
+                        "AWS:SourceAccount": "%s"
+                    }
+                }
+            }
+        ]
+    }`, bucketName, bucketName, accountID, bucketName, accountID, bucketName, accountID, bucketName, accountID, accountID)
+
+	_, err := s3Client.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
+		Bucket: aws.String(bucketName),
+		Policy: aws.String(policy),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update bucket policy for Config: %w", err)
+	}
+
+	fmt.Printf("[S3] ✅ Bucket policy updated successfully for AWS Config\n")
 	return nil
 }

@@ -2,8 +2,9 @@ package route
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/rishichirchi/cloudloom/api/configure"
 	"github.com/rishichirchi/cloudloom/api/cloudformation"
+	"github.com/rishichirchi/cloudloom/api/configure"
+	"github.com/rishichirchi/cloudloom/api/infrastructure"
 )
 
 func SetupRoutes(router *gin.Engine) {
@@ -19,4 +20,7 @@ func SetupRoutes(router *gin.Engine) {
 
 	assumeRoleRouterGroup := v1.Group("/configure")
 	configure.SetupConfigureRoutes(assumeRoleRouterGroup)
+
+	infrastructureRouterGroup := v1.Group("/infrastructure")
+	infrastructure.SetupInfrastructureRoutes(infrastructureRouterGroup)
 }
